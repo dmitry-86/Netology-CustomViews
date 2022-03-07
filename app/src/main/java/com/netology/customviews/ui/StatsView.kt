@@ -1,5 +1,6 @@
 package ru.netology.nmedia.ui
 
+import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -7,6 +8,7 @@ import android.graphics.PointF
 import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.View
+import android.view.animation.LinearInterpolator
 import androidx.core.content.withStyledAttributes
 import ru.netology.nmedia.R
 import ru.netology.nmedia.util.AndroidUtils
@@ -26,6 +28,9 @@ class StatsView @JvmOverloads constructor(
     private var lineWidth = AndroidUtils.dp(context, 5F).toFloat()
     private var fontSize = AndroidUtils.dp(context, 40F).toFloat()
     private var colors = emptyList<Int>()
+
+    private var progress = 0F
+    private var animator: ValueAnimator? = null
 
     init {
         context.withStyledAttributes(attrs, R.styleable.StatsView) {
@@ -91,8 +96,25 @@ class StatsView @JvmOverloads constructor(
     var data: List<Float> = emptyList()
         set(value) {
             field = value
-            invalidate()
+            update()
         }
+
+    private fun update() {
+        animator?.apply {
+            cancel()
+            removeAllListeners()
+        }
+
+        animator = ValueAnimator.ofFloat(0F, 1F).apply {
+            addUpdateListener {
+                interpolator = LinearInterpolator()
+                duration = 3_000
+                progress = it.animatedValue as Float
+                invalidate()
+            }
+            start()
+        }
+    }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         radius = min(w, h) / 2F - lineWidth / 2
@@ -109,15 +131,7 @@ class StatsView @JvmOverloads constructor(
         }
 
         var startFrom = -90F
-        for ((index, datum) in data.withIndex()) {
-            val angle = (datum / data.sum())*360F
-            paint.color = colors.getOrNull(index) ?: randomColor()
-            canvas.drawArc(oval, startFrom, angle, false, paint)
-            startFrom += angle
-        }
-
-        paint.color = colors[0]
-        canvas.drawArc(oval, startFrom, 1F, false, paint)
+        val maxAngle = 360F * progress + startFrom
 
         canvas.drawText(
             "%.2f%%".format(100F),
@@ -125,6 +139,18 @@ class StatsView @JvmOverloads constructor(
             center.y + textPaint.textSize / 4,
             textPaint,
         )
+
+        for ((index, datum) in data.withIndex()) {
+            val angle = (datum / data.sum())*360F
+            val rotationAngle = min(angle, maxAngle - startFrom)
+            paint.color = colors.getOrNull(index) ?: randomColor()
+            canvas.drawArc(
+                oval,  startFrom, rotationAngle, false, paint
+            )
+            startFrom += angle
+            if (startFrom > maxAngle) return@onDraw
+        }
+
     }
 
     private fun randomColor() = Random.nextInt(0xFF000000.toInt(), 0xFFFFFFFF.toInt())
